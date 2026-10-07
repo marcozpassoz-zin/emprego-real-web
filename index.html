@@ -113,7 +113,7 @@ function profilePage(){
  if(token) loadMe();
 }
 async function register(){
- try{let d=await api('/auth/register',{method:'POST',body:JSON.stringify({name:name.value,email:email.value,password:password.value,city:pcity.value,min_salary:Number(psalary.value||0),experience:pexp.value,schedule:pschedule.value})});token=d.token;localStorage.setItem('emprego_token',token);alert('Conta criada!');show('jobs')}catch(e){alert(e.message)}
+ try{let d=await api('/auth/register',{method:'POST',body:JSON.stringify({name:document.getElementById('name').value,email:email.value,password:password.value,city:pcity.value,min_salary:Number(psalary.value||0),experience:pexp.value,schedule:pschedule.value})});token=d.token;localStorage.setItem('emprego_token',token);alert('Conta criada!');show('jobs')}catch(e){alert(e.message)}
 }
 async function login(){
  try{let e=prompt('E-mail');let p=prompt('Senha');let d=await api('/auth/login',{method:'POST',body:JSON.stringify({email:e,password:p})});token=d.token;localStorage.setItem('emprego_token',token);show('jobs')}catch(x){alert(x.message)}

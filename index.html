@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<title>Emprego Real</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f3f4f6;color:#111827}
+header{background:#111827;color:#fff;padding:18px 16px;position:sticky;top:0;z-index:5}
+.brand{font-size:24px;font-weight:800}.sub{opacity:.75;font-size:13px}
+main{max-width:720px;margin:auto;padding:14px 12px 90px}
+.card{background:#fff;border-radius:18px;padding:16px;margin:10px 0;box-shadow:0 2px 10px #0000000b}
+input,select,button{width:100%;padding:13px;border-radius:12px;border:1px solid #d1d5db;font-size:15px;margin-top:8px}
+button{border:0;background:#111827;color:#fff;font-weight:700}.secondary{background:#e5e7eb;color:#111827}
+.row{display:flex;gap:8px}.row>*{flex:1}.tag{display:inline-block;padding:5px 8px;border-radius:999px;background:#eef2ff;font-size:12px;margin:3px 3px 3px 0}
+.green{background:#dcfce7}.yellow{background:#fef3c7}.red{background:#fee2e2}
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #ddd;display:flex;z-index:10}
+nav button{margin:0;border-radius:0;background:#fff;color:#374151;font-size:12px;padding:12px 4px}
+nav button.active{color:#111827;font-weight:800}
+h2{margin:5px 0 10px}.muted{color:#6b7280;font-size:13px}.hidden{display:none}.apply{margin-top:10px}
+</style>
+</head>
+<body>
+<header><div class="brand">Emprego Real</div><div class="sub">Vagas explicadas para você decidir onde vale se candidatar</div></header>
+<main id="app"></main>
+<nav>
+<button onclick="show('jobs')" id="n-jobs">🔎<br>Vagas</button>
+<button onclick="show('favorites')" id="n-favorites">⭐<br>Salvas</button>
+<button onclick="show('applications')" id="n-applications">📋<br>Candidaturas</button>
+<button onclick="show('profile')" id="n-profile">👤<br>Perfil</button>
+</nav>
+<script>
+const API = localStorage.getItem('emprego_api') || 'https://SEU-BACKEND-AQUI';
+let token=localStorage.getItem('emprego_token')||'';
+let profile={};
+const app=document.getElementById('app');
+
+function esc(s=''){return s.replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function money(v){return v?`R$ ${Number(v).toLocaleString('pt-BR')}`:'A combinar'}
+function compat(j){
+ let c=j.compatibility||'Faça login para analisar';
+ let cl=c.startsWith('🟢')?'green':c.startsWith('🟡')?'yellow':c.startsWith('🔴')?'red':'';
+ return `<span class="tag ${cl}">${esc(c)}</span>`;
+}
+async function api(path,opt={}){
+ if(!API || API.includes('SEU-BACKEND')) throw new Error('Configure a URL da API em Configurações.');
+ opt.headers={...(opt.headers||{}),'Content-Type':'application/json'};
+ if(token) opt.headers.Authorization='Bearer '+token;
+ let r=await fetch(API+path,opt); let d=await r.json();
+ if(!r.ok) throw new Error(d.detail||'Erro');
+ return d;
+}
+function show(page){
+ document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+ const b=document.getElementById('n-'+page); if(b)b.classList.add('active');
+ if(page==='jobs') jobs();
+ if(page==='favorites') favorites();
+ if(page==='applications') applications();
+ if(page==='profile') profilePage();
+}
+async function jobs(){
+ app.innerHTML=`<div class="card"><h2>Encontrar vaga</h2>
+ <input id="q" placeholder="Cargo, empresa ou palavra-chave">
+ <input id="city" placeholder="Cidade (ex.: São Paulo)">
+ <div class="row"><input id="salary" type="number" placeholder="Salário mínimo"><select id="noexp"><option value="">Todas</option><option value="1">Sem experiência</option></select></div>
+ <button onclick="searchJobs()">Buscar vagas</button></div><div id="results"></div>`;
+ searchJobs();
+}
+async function searchJobs(){
+ const q=encodeURIComponent(document.getElementById('q')?.value||'');
+ const city=encodeURIComponent(document.getElementById('city')?.value||'');
+ const salary=document.getElementById('salary')?.value||0;
+ const ne=document.getElementById('noexp')?.value||'';
+ const box=document.getElementById('results'); if(!box)return;
+ box.innerHTML='<div class="card">Buscando...</div>';
+ try{
+  let data=await api(`/jobs?q=${q}&city=${city}&min_salary=${salary}&no_experience=${ne?1:0}${token?'&token='+encodeURIComponent(token):''}`);
+  box.innerHTML=data.length?data.map(j=>`<div class="card">
+   <h2>${esc(j.title)}</h2><b>${esc(j.company)}</b><div class="muted">${esc(j.location)}</div>
+   ${compat(j)}
+   <p>${esc(j.description)}</p>
+   <span class="tag">${money(j.salary_min)} – ${money(j.salary_max)}</span>
+   ${j.schedule?`<span class="tag">${esc(j.schedule)}</span>`:''}
+   <div class="row apply"><button onclick="saveJob(${j.id})">⭐ Salvar</button><button onclick="applyJob(${j.id},'${esc(j.url||'')}')">Candidatar</button></div>
+  </div>`).join(''):'<div class="card">Nenhuma vaga encontrada.</div>';
+ }catch(e){box.innerHTML=`<div class="card"><b>API não configurada.</b><p class="muted">${esc(e.message)}</p><p>Publique o backend e salve a URL da API no armazenamento do app.</p></div>`}
+}
+async function saveJob(id){if(!token)return alert('Faça login primeiro.');try{await api('/favorites/'+id,{method:'POST',body:'{}'});alert('Vaga salva!')}catch(e){alert(e.message)}}
+async function applyJob(id,url){if(!token)return alert('Faça login primeiro.');try{await api('/applications/'+id,{method:'POST',body:'{}'});if(url)location.href=url;else alert('Candidatura registrada.')}catch(e){alert(e.message)}}
+async function favorites(){
+ if(!token){app.innerHTML='<div class="card"><h2>Vagas salvas</h2><p>Faça login para usar favoritos.</p><button onclick="profilePage()">Entrar / criar conta</button></div>';return}
+ try{let data=await api('/favorites?token='+encodeURIComponent(token));app.innerHTML='<h2>Vagas salvas</h2>'+data.map(j=>`<div class="card"><h2>${esc(j.title)}</h2><b>${esc(j.company)}</b><p>${esc(j.location)}</p><button onclick="location.href='${esc(j.url||'#')}'">Abrir vaga</button></div>`).join('')||'<div class="card">Você ainda não salvou vagas.</div>'}catch(e){app.innerHTML='<div class="card">'+esc(e.message)+'</div>'}
+}
+async function applications(){
+ if(!token){app.innerHTML='<div class="card"><h2>Candidaturas</h2><p>Faça login para acompanhar.</p></div>';return}
+ try{let data=await api('/applications?token='+encodeURIComponent(token));app.innerHTML='<h2>Minhas candidaturas</h2>'+data.map(j=>`<div class="card"><h2>${esc(j.title)}</h2><b>${esc(j.company)}</b><p>${esc(j.location)}</p><span class="tag">${esc(j.status)}</span></div>`).join('')||'<div class="card">Nenhuma candidatura registrada.</div>'}catch(e){app.innerHTML='<div class="card">'+esc(e.message)+'</div>'}
+}
+function profilePage(){
+ app.innerHTML=`<div class="card"><h2>${token?'Meu perfil':'Entrar no Emprego Real'}</h2>
+ <input id="name" placeholder="Nome completo"><input id="email" type="email" placeholder="E-mail">
+ <input id="password" type="password" placeholder="Senha">
+ <input id="pcity" placeholder="Cidade">
+ <input id="psalary" type="number" placeholder="Salário mínimo">
+ <select id="pexp"><option value="sem_experiencia">Sem experiência</option><option value="alguma">Alguma experiência</option><option value="experiente">Experiente</option></select>
+ <select id="pschedule"><option value="qualquer">Qualquer horário</option><option value="5x2">5x2</option><option value="6x1">6x1</option></select>
+ <button onclick="${token?'updateProfile()':'register()'}">${token?'Salvar perfil':'Criar conta'}</button>
+ ${token?'<button class="secondary" onclick="logout()">Sair</button>':'<button class="secondary" onclick="login()">Já tenho conta</button>'}
+ </div>
+ <div class="card"><h2>Configuração</h2><p class="muted">URL da API atual: ${esc(API)}</p><input id="apiurl" placeholder="https://sua-api..."><button onclick="setApi()">Salvar URL da API</button></div>`;
+ if(token) loadMe();
+}
+async function register(){
+ try{let d=await api('/auth/register',{method:'POST',body:JSON.stringify({name:name.value,email:email.value,password:password.value,city:pcity.value,min_salary:Number(psalary.value||0),experience:pexp.value,schedule:pschedule.value})});token=d.token;localStorage.setItem('emprego_token',token);alert('Conta criada!');show('jobs')}catch(e){alert(e.message)}
+}
+async function login(){
+ try{let e=prompt('E-mail');let p=prompt('Senha');let d=await api('/auth/login',{method:'POST',body:JSON.stringify({email:e,password:p})});token=d.token;localStorage.setItem('emprego_token',token);show('jobs')}catch(x){alert(x.message)}
+}
+async function loadMe(){try{let u=await api('/me?token='+encodeURIComponent(token));name.value=u.name;email.value=u.email;pcity.value=u.city;psalary.value=u.min_salary;pexp.value=u.experience;pschedule.value=u.schedule}catch(e){}}
+async function updateProfile(){try{await api('/me?token='+encodeURIComponent(token),{method:'PUT',body:JSON.stringify({name:name.value,city:pcity.value,min_salary:Number(psalary.value||0),experience:pexp.value,schedule:pschedule.value})});alert('Perfil atualizado')}catch(e){alert(e.message)}}
+function logout(){token='';localStorage.removeItem('emprego_token');show('jobs')}
+function setApi(){let u=document.getElementById('apiurl').value.trim();if(!u)return;localStorage.setItem('emprego_api',u.replace(/\/$/,''));location.reload()}
+show('jobs');
+</script>
+</body></html>
